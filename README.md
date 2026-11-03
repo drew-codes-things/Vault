@@ -21,8 +21,9 @@ on the phone before it's uploaded, so the server only ever stores scrambled
 data - it can't see file names, types, sizes or contents, and neither can
 anyone who gets hold of it.
 
-Vault talks to your own self-hosted Vault server over HTTPS. The server isn't
-part of this repository.
+Vault talks to your own self-hosted Vault server over HTTPS. The server (Go,
+standard library only) and the Android app's source are both in this
+repository.
 
 ---
 
@@ -93,6 +94,47 @@ Signing certificate:  5352d597c8b00e76f032df64c9f91f30965d4753156087c677d19b95af
 
 Updates are signed with the same certificate, so they install over the top
 without losing anything.
+
+---
+
+## Self-Hosting the Server
+
+The server stores only encrypted blobs, so a plain copy of its data folder is a
+full backup. With Docker:
+
+```bash
+echo "VAULT_SETUP_TOKEN=$(openssl rand -hex 32)" > .env && chmod 600 .env
+docker compose up -d --build
+```
+
+It listens on `127.0.0.1:8092`. Put it behind HTTPS (a reverse proxy, or a
+Cloudflare Tunnel pointing at `http://localhost:8092`) - the app only accepts
+`https://` addresses. The `VAULT_SETUP_TOKEN` is what you paste into the app's
+first-time setup; it only works once.
+
+Without Docker:
+
+```bash
+cd server
+VAULT_DATA=./data VAULT_SETUP_TOKEN=<random> go run .
+```
+
+If you use Cloudflare, keep upload chunks at 32 MiB or less - it rejects
+request bodies over 100 MB on free plans.
+
+---
+
+## Build
+
+```bash
+cd server && go build -o vault-server . && go test -race ./...
+cd ../android
+./gradlew :core:test            # crypto + end-to-end tests against the real server
+./gradlew :app:assembleRelease  # app.vault.public
+```
+
+The APK lands at `android/app/build/outputs/apk/release/app-release.apk`.
+Requires JDK 17+ and the Android SDK.
 
 ---
 

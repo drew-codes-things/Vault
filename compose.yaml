@@ -1,0 +1,17 @@
+services:
+  vault:
+    build: ./server
+    container_name: vault
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    env_file: .env
+    environment:
+      VAULT_ADDR: 0.0.0.0:8080
+      VAULT_DATA: /data
+    volumes:
+      - ${VAULT_DATA_DIR:-./data}:/data
+    ports:
+      - "127.0.0.1:8092:8080"

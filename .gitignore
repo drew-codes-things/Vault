@@ -1,3 +1,11 @@
 *.jks
 *.pass
 .env
+data/
+server/data/
+server/vault-server
+local.properties
+android/.gradle/
+android/**/build/
+android/build/
+android/.kotlin/
