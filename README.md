@@ -7,7 +7,7 @@
 [![Kotlin](https://img.shields.io/badge/kotlin-drew?style=flat-square&logo=kotlin&logoColor=white&color=7F52FF)](https://kotlinlang.org/)
 [![Jetpack Compose](https://img.shields.io/badge/jetpack%20compose-drew?style=flat-square&logo=jetpackcompose&logoColor=white&color=4285F4)](https://developer.android.com/jetpack/compose)
 [![Android](https://img.shields.io/badge/android-drew?style=flat-square&logo=android&logoColor=white&color=3DDC84)](https://developer.android.com/)
-[![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/license-all%20rights%20reserved-red?style=flat-square)](LICENSE)
 
 </div>
 
@@ -80,9 +80,9 @@ Requires Android 9 or newer.
 
 ## Download
 
-Grab `Vault-1.2.apk` (about 10 MB) from this repository or the
-[Releases](../../releases) page, open it on your phone and allow installs from
-your browser or file manager when Android asks.
+Grab `Vault-1.2.apk` (about 10 MB) from the [Releases](../../releases) page,
+open it on your phone and allow installs from your browser or file manager
+when Android asks.
 
 To check the download:
 
@@ -112,4 +112,6 @@ gh repo clone drew-codes-things/Vault
 
 ## License
 
-MIT - made by [Drew](https://github.com/drew-codes-things)
+All rights reserved - free to download and use, but not to copy, modify or redistribute. See [LICENSE](LICENSE).
+
+Made by [Drew](https://github.com/drew-codes-things)
