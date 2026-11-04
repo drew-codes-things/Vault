@@ -8,7 +8,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,7 +18,6 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.materialIcon
 import androidx.compose.material.icons.materialPath
 import androidx.compose.material3.AlertDialog
@@ -65,6 +63,14 @@ private val ReplayIcon: ImageVector = materialIcon(name = "Vault.Replay") {
         verticalLineToRelative(3f); horizontalLineTo(5f); verticalLineToRelative(6f); horizontalLineToRelative(2f); close()
         moveTo(17f, 17f); horizontalLineTo(7f); verticalLineToRelative(-3f); lineToRelative(-4f, 4f); lineToRelative(4f, 4f)
         verticalLineToRelative(-3f); horizontalLineToRelative(12f); verticalLineToRelative(-6f); horizontalLineToRelative(-2f); close()
+    }
+}
+
+private val SaveIcon: ImageVector = materialIcon(name = "Vault.Save") {
+    materialPath {
+        moveTo(19f, 9f); horizontalLineToRelative(-4f); verticalLineTo(3f); horizontalLineTo(9f); verticalLineToRelative(6f)
+        horizontalLineTo(5f); lineToRelative(7f, 7f); lineToRelative(7f, -7f); close()
+        moveTo(5f, 18f); verticalLineToRelative(2f); horizontalLineToRelative(14f); verticalLineToRelative(-2f); horizontalLineTo(5f); close()
     }
 }
 
@@ -115,7 +121,7 @@ fun ViewerScreen(viewModel: VaultViewModel, startIndex: Int) {
                 saving = current
                 viewModel.choosingExternally = true
                 saver.launch(SaveRequest(current.meta.name, current.meta.mimeType))
-            }) { Icon(Icons.Default.Share, "Save to device", tint = Color.White) }
+            }) { Icon(SaveIcon, "Save to device", tint = Color.White) }
             IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Default.Delete, "Delete", tint = Color.White) }
         }
     }

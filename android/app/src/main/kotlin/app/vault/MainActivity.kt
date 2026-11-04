@@ -11,17 +11,12 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import app.vault.ui.FolderScreen
 import app.vault.ui.FoldersScreen
 import app.vault.ui.ShareFolderPicker
 import app.vault.ui.UnlockScreen
+import app.vault.ui.VaultTheme
 import app.vault.ui.ViewerScreen
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
@@ -29,14 +24,6 @@ import androidx.fragment.app.FragmentActivity
 import javax.crypto.Cipher
 
 typealias BiometricAuth = (cipher: Cipher, title: String, onSuccess: (Cipher) -> Unit) -> Unit
-
-private val vaultColors = darkColorScheme(
-    primary = Color(0xFFF2C14E),
-    onPrimary = Color(0xFF101820),
-    background = Color.Black,
-    surface = Color(0xFF101820),
-    surfaceVariant = Color(0xFF1C2833),
-)
 
 class MainActivity : FragmentActivity() {
     private val viewModel: VaultViewModel by viewModels()
@@ -46,13 +33,15 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) setRecentsScreenshotEnabled(false)
         enableEdgeToEdge()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
         if (savedInstanceState == null) handleShare(intent)
         setContent {
-            MaterialTheme(colorScheme = vaultColors) {
-                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    VaultApp(viewModel, ::authenticate)
-                }
+            VaultTheme {
+                VaultApp(viewModel, ::authenticate)
             }
         }
     }

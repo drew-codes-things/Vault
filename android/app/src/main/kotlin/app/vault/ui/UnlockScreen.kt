@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -56,8 +57,21 @@ fun UnlockScreen(viewModel: VaultViewModel, authenticate: BiometricAuth) {
     val unlockWithFingerprint = {
         viewModel.biometricUnlockCipher()?.let { cipher -> authenticate(cipher, "Unlock Vault") { viewModel.unlockWithBiometric(it) } }
     }
+    val canSubmit = !viewModel.busy && passphrase.isNotEmpty() &&
+        (!editingServer || server.isNotBlank()) &&
+        (!firstTime || setupToken.isNotBlank())
+    val submit = {
+        viewModel.unlock(
+            passphrase.toCharArray(),
+            if (firstTime) setupToken.trim() else null,
+            if (firstTime) confirmation.toCharArray() else null,
+            if (editingServer) server else null,
+        )
+        passphrase = ""
+        confirmation = ""
+    }
     LaunchedEffect(Unit) {
-        passkeyFocus.requestFocus()
+        if (!editingServer) passkeyFocus.requestFocus()
         if (viewModel.biometricEnabled) unlockWithFingerprint()
     }
 
@@ -112,7 +126,8 @@ fun UnlockScreen(viewModel: VaultViewModel, authenticate: BiometricAuth) {
             label = { Text("Passkey") },
             singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = if (firstTime) ImeAction.Next else ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { if (canSubmit) submit() }),
             modifier = Modifier.fillMaxWidth().focusRequester(passkeyFocus),
         )
         if (firstTime) {
@@ -123,7 +138,7 @@ fun UnlockScreen(viewModel: VaultViewModel, authenticate: BiometricAuth) {
                 label = { Text("Confirm passkey") },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(12.dp))
@@ -132,6 +147,8 @@ fun UnlockScreen(viewModel: VaultViewModel, authenticate: BiometricAuth) {
                 onValueChange = { setupToken = it },
                 label = { Text("Setup token") },
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { if (canSubmit) submit() }),
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(8.dp))
@@ -151,17 +168,8 @@ fun UnlockScreen(viewModel: VaultViewModel, authenticate: BiometricAuth) {
         }
         Spacer(Modifier.height(16.dp))
         Button(
-            enabled = !viewModel.busy && passphrase.isNotEmpty() && (!editingServer || server.isNotBlank()),
-            onClick = {
-                viewModel.unlock(
-                    passphrase.toCharArray(),
-                    if (firstTime) setupToken.trim() else null,
-                    if (firstTime) confirmation.toCharArray() else null,
-                    if (editingServer) server else null,
-                )
-                passphrase = ""
-                confirmation = ""
-            },
+            enabled = canSubmit,
+            onClick = submit,
             modifier = Modifier.fillMaxWidth(),
         ) {
             if (viewModel.busy) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp) else Text(if (firstTime) "Create vault" else "Unlock")

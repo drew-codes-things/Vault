@@ -54,6 +54,7 @@ gone for good - that's the point.
 
 - **End-to-end encryption** - your passkey and vault key never leave the phone
 - **Any file, any size** - photos, videos of any length, documents, anything
+- **Add from anywhere** - the + button offers "Photos and videos", which opens the usual Android chooser (your gallery, Google Photos, Files or any other app that can supply pictures), or "Any file" for documents. Sharing to Vault from another app works too
 - **Built-in viewer** - photos and streaming video playback, with thumbnails; videos replay when they finish (toggle with the repeat button)
 - **Folders** - starts with Photos, Videos and Documents; add or delete your own
 - **Offline mode** - files added without a connection are kept encrypted on the phone and upload automatically later
@@ -134,7 +135,10 @@ cd ../android
 ```
 
 The APK lands at `android/app/build/outputs/apk/release/app-release.apk`.
-Requires JDK 17+ and the Android SDK.
+Requires JDK 17+ and the Android SDK. Release builds are signed with
+`~/.vault-release.jks` when it exists (password in `~/.vault-release.pass`);
+without it the build still succeeds and produces an unsigned APK, so anyone
+can build from source and sign with their own key.
 
 ---
 

@@ -1,11 +1,14 @@
 package app.vault
 
+import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
+import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.security.GeneralSecurityException
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -59,9 +62,15 @@ class DeviceSecrets(private val dir: File) {
         val file = File(dir, name)
         if (!file.exists()) return null
         val sealed = file.readBytes()
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(TAG_BITS, sealed, 0, NONCE_BYTES))
-        return cipher.doFinal(sealed, NONCE_BYTES, sealed.size - NONCE_BYTES)
+        if (sealed.size < NONCE_BYTES + TAG_BITS / 8) return null
+        return try {
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(TAG_BITS, sealed, 0, NONCE_BYTES))
+            cipher.doFinal(sealed, NONCE_BYTES, sealed.size - NONCE_BYTES)
+        } catch (error: GeneralSecurityException) {
+            Log.w("Vault", "stored secret $name cannot be opened", error)
+            null
+        }
     }
 
     fun exists(name: String): Boolean = File(dir, name).exists()
@@ -77,16 +86,19 @@ class DeviceSecrets(private val dir: File) {
         (keyStore.getKey(BIOMETRIC_ALIAS, null) as? SecretKey)?.let { return it }
         if (!create) return null
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE)
-        generator.init(
-            KeyGenParameterSpec.Builder(BIOMETRIC_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setKeySize(256)
-                .setUserAuthenticationRequired(true)
-                .setUserAuthenticationParameters(0, KeyProperties.AUTH_BIOMETRIC_STRONG)
-                .setInvalidatedByBiometricEnrollment(true)
-                .build(),
-        )
+        val spec = KeyGenParameterSpec.Builder(BIOMETRIC_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+            .setKeySize(256)
+            .setUserAuthenticationRequired(true)
+            .setInvalidatedByBiometricEnrollment(true)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            spec.setUserAuthenticationParameters(0, KeyProperties.AUTH_BIOMETRIC_STRONG)
+        } else {
+            @Suppress("DEPRECATION")
+            spec.setUserAuthenticationValidityDurationSeconds(-1)
+        }
+        generator.init(spec.build())
         return generator.generateKey()
     }
 

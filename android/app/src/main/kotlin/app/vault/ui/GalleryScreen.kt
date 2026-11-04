@@ -2,7 +2,6 @@ package app.vault.ui
 
 import android.graphics.Bitmap
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -45,6 +44,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -81,7 +81,8 @@ fun FoldersScreen(viewModel: VaultViewModel, authenticate: BiometricAuth) {
     val cards = viewModel.folders + if (viewModel.unsortedItems.isNotEmpty()) listOf(UNSORTED) else emptyList()
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Vault") }, actions = { VaultActions(viewModel, authenticate) }) },
+        containerColor = Color.Transparent,
+        topBar = { TopAppBar(title = { Text("Vault") }, actions = { VaultActions(viewModel, authenticate) }, colors = transparentAppBar()) },
         floatingActionButton = {
             FloatingActionButton(onClick = { creating = true }, containerColor = MaterialTheme.colorScheme.primary) {
                 Icon(Icons.Default.Add, "New folder")
@@ -190,7 +191,7 @@ fun FolderScreen(viewModel: VaultViewModel, folder: String, authenticate: Biomet
     val selecting = viewModel.selection.isNotEmpty()
     val contents = viewModel.visibleItems
 
-    val mediaPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) {
+    val mediaPicker = rememberLauncherForActivityResult(ChooseMedia()) {
         viewModel.choosingExternally = false
         viewModel.upload(it)
     }
@@ -200,8 +201,10 @@ fun FolderScreen(viewModel: VaultViewModel, folder: String, authenticate: Biomet
     }
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
+                colors = transparentAppBar(),
                 title = { Text(if (selecting) "${viewModel.selection.size} selected" else folderLabel(folder), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = {
                     if (selecting) {
@@ -215,8 +218,9 @@ fun FolderScreen(viewModel: VaultViewModel, folder: String, authenticate: Biomet
                         Box {
                             TextButton(onClick = { moveOpen = true }) { Text("Move to…") }
                             DropdownMenu(expanded = moveOpen, onDismissRequest = { moveOpen = false }) {
-                                viewModel.folders.filter { it != folder }.forEach { target ->
-                                    DropdownMenuItem(text = { Text(target) }, onClick = {
+                                val targets = viewModel.folders + if (folder != UNSORTED) listOf(UNSORTED) else emptyList()
+                                targets.filter { it != folder }.forEach { target ->
+                                    DropdownMenuItem(text = { Text(folderLabel(target)) }, onClick = {
                                         moveOpen = false
                                         viewModel.moveSelected(target)
                                     })
@@ -238,7 +242,7 @@ fun FolderScreen(viewModel: VaultViewModel, folder: String, authenticate: Biomet
                         DropdownMenuItem(text = { Text("Photos and videos") }, onClick = {
                             menuOpen = false
                             viewModel.choosingExternally = true
-                            mediaPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+                            mediaPicker.launch(Unit)
                         })
                         DropdownMenuItem(text = { Text("Any file") }, onClick = {
                             menuOpen = false
@@ -308,6 +312,10 @@ fun FolderScreen(viewModel: VaultViewModel, folder: String, authenticate: Biomet
         )
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun transparentAppBar() = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
 
 @Composable
 private fun RowScope.VaultActions(viewModel: VaultViewModel, authenticate: BiometricAuth) {

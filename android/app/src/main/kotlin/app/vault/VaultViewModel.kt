@@ -39,6 +39,8 @@ import vault.core.VaultSession
 import vault.core.mediaKindOf
 import vault.core.sealedSize
 import vault.core.skipFully
+import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
@@ -159,7 +161,6 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
     private val unlockPreferences = application.getSharedPreferences("biometric", Context.MODE_PRIVATE)
     private val viewerPreferences = application.getSharedPreferences("viewer", Context.MODE_PRIVATE)
 
-    /** Videos replay from the start when they finish, unless the user turns it off in the viewer. */
     var replayVideos by mutableStateOf(viewerPreferences.getBoolean("replay_videos", true))
         private set
 
@@ -190,7 +191,6 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** [server] is the address typed on the unlock screen (public edition only); null keeps the current one. */
     fun unlock(passphrase: CharArray, setupToken: String?, confirmation: CharArray?, server: String? = null) {
         if (setupToken != null) {
             if (passphrase.size < MIN_PASSPHRASE_LENGTH) return fail("Use at least $MIN_PASSPHRASE_LENGTH characters")
@@ -427,6 +427,7 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun appStarted() {
+        choosingExternally = false
         lockJob?.cancel()
         lockJob = null
     }
@@ -598,17 +599,19 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
             val extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mime)
             name = (uri.lastPathSegment ?: "file") + (extension?.let { ".$it" } ?: "")
         }
+        val staged = if (size == UNKNOWN_SIZE) stageLocally(uri, name) else null
+        if (staged != null) size = staged.length()
         val state = AddState(name, sealedSize(size.coerceAtLeast(0)))
         withContext(Dispatchers.Main) { adds.add(state) }
         try {
             if (size == UNKNOWN_SIZE) throw IOException("cannot determine size of $name")
             val thumbnail = when (mediaKindOf(mime)) {
-                MediaKind.IMAGE -> imageThumbnail(context, uri)
-                MediaKind.VIDEO -> videoThumbnail(context, uri)
+                MediaKind.IMAGE -> if (staged != null) imageThumbnail(staged) else imageThumbnail(context, uri)
+                MediaKind.VIDEO -> if (staged != null) videoThumbnail(staged) else videoThumbnail(context, uri)
                 MediaKind.OTHER -> null
             }
             val source = PlainSource { skip ->
-                val stream = resolver.openInputStream(uri) ?: throw IOException("cannot open $name")
+                val stream = if (staged != null) staged.inputStream() else resolver.openInputStream(uri) ?: throw IOException("cannot open $name")
                 stream.skipFully(skip)
                 stream
             }
@@ -620,8 +623,23 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
         } catch (error: Exception) {
             Log.w("Vault", "adding $name failed", error)
             state.failure = describe(error)
+        } finally {
+            staged?.delete()
         }
         delay(if (state.failure == null) ADD_STATUS_VISIBLE_MS else ADD_FAILURE_VISIBLE_MS)
         withContext(Dispatchers.Main) { adds.remove(state) }
+    }
+
+    private fun stageLocally(uri: Uri, name: String): File? {
+        val target = File(context.cacheDir, "staging").apply { mkdirs() }.let { File.createTempFile("add-", ".bin", it) }
+        return try {
+            val input = context.contentResolver.openInputStream(uri) ?: throw IOException("cannot open $name")
+            input.use { stream -> FileOutputStream(target).use { out -> stream.copyTo(out) } }
+            target
+        } catch (error: IOException) {
+            Log.w("Vault", "staging $name failed", error)
+            target.delete()
+            null
+        }
     }
 }

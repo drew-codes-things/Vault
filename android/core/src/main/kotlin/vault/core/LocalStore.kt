@@ -63,7 +63,13 @@ class LocalStore(root: File) {
     @Synchronized
     fun get(localId: String): LocalRecord? = read(dirOf(localId))
 
-    private fun read(dir: File): LocalRecord? {
+    private fun read(dir: File): LocalRecord? = try {
+        parse(dir)
+    } catch (error: Exception) {
+        null
+    }
+
+    private fun parse(dir: File): LocalRecord? {
         val file = File(dir, RECORD_FILE)
         if (!file.exists()) return null
         DataInputStream(ByteArrayInputStream(file.readBytes())).use { input ->
