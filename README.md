@@ -82,7 +82,7 @@ Requires Android 9 or newer.
 
 ## Download
 
-Grab `Vault-1.2.apk` (about 10 MB) from the [Releases](../../releases) page,
+Grab `Vault-1.3.apk` (about 10 MB) from the [Releases](../../releases) page,
 open it on your phone and allow installs from your browser or file manager
 when Android asks.
 

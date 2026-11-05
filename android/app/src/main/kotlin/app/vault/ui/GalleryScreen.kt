@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
@@ -184,7 +185,7 @@ private fun NewFolderDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun FolderScreen(viewModel: VaultViewModel, folder: String, authenticate: BiometricAuth) {
+fun FolderScreen(viewModel: VaultViewModel, folder: String, authenticate: BiometricAuth, grid: LazyGridState) {
     var menuOpen by remember { mutableStateOf(false) }
     var moveOpen by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -275,6 +276,7 @@ fun FolderScreen(viewModel: VaultViewModel, folder: String, authenticate: Biomet
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(hint) }
             } else {
                 LazyVerticalGrid(
+                    state = grid,
                     columns = GridCells.Adaptive(112.dp),
                     contentPadding = PaddingValues(4.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),

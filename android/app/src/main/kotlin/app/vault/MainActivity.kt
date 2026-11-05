@@ -4,14 +4,18 @@ import android.Manifest
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.graphics.Color
 import android.os.Bundle
 import android.view.WindowManager
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.saveable.rememberSaveable
 import app.vault.ui.FolderScreen
 import app.vault.ui.FoldersScreen
 import app.vault.ui.ShareFolderPicker
@@ -32,7 +36,7 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) setRecentsScreenshotEnabled(false)
-        enableEdgeToEdge()
+        enableEdgeToEdge(SystemBarStyle.dark(Color.TRANSPARENT), SystemBarStyle.dark(Color.TRANSPARENT))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
         ) {
@@ -101,6 +105,7 @@ class MainActivity : FragmentActivity() {
 private fun VaultApp(viewModel: VaultViewModel, authenticate: BiometricAuth) {
     val viewing = viewModel.viewerIndex
     val folder = viewModel.currentFolder
+    val folderGrid = rememberSaveable(folder, saver = LazyGridState.Saver) { LazyGridState() }
     BackHandler(enabled = viewing != null || viewModel.selection.isNotEmpty() || folder != null) {
         when {
             viewing != null -> viewModel.viewerIndex = null
@@ -111,7 +116,7 @@ private fun VaultApp(viewModel: VaultViewModel, authenticate: BiometricAuth) {
     when {
         !viewModel.unlocked -> UnlockScreen(viewModel, authenticate)
         viewing != null -> ViewerScreen(viewModel, viewing)
-        folder != null -> FolderScreen(viewModel, folder, authenticate)
+        folder != null -> FolderScreen(viewModel, folder, authenticate, folderGrid)
         else -> FoldersScreen(viewModel, authenticate)
     }
     if (viewModel.unlocked) ShareFolderPicker(viewModel)
