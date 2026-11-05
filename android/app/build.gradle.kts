@@ -12,8 +12,8 @@ android {
         applicationId = "app.vault.public"
         minSdk = 28
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.3"
+        versionCode = 5
+        versionName = "1.3.1"
         buildConfigField("String", "SERVER_URL", "\"\"")
         buildConfigField("boolean", "SERVER_CONFIGURABLE", "true")
         buildConfigField("String", "DEFAULT_FOLDERS", "\"Photos,Videos,Documents\"")

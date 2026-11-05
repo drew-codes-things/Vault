@@ -59,6 +59,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.vault.BiometricAuth
@@ -67,6 +68,7 @@ import app.vault.VaultViewModel
 import kotlinx.coroutines.delay
 import vault.core.MAX_FOLDER_NAME_LENGTH
 import vault.core.MediaKind
+import vault.core.PhotoSourceKind
 import vault.core.VaultItem
 
 private const val MESSAGE_VISIBLE_MS = 4_000L
@@ -196,6 +198,8 @@ fun FolderScreen(viewModel: VaultViewModel, folder: String, authenticate: Biomet
         viewModel.choosingExternally = false
         viewModel.upload(it)
     }
+    val context = LocalContext.current
+    val photoSources = remember { installedPhotoSources(context.packageManager) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) {
         viewModel.choosingExternally = false
         viewModel.upload(it)
@@ -240,11 +244,14 @@ fun FolderScreen(viewModel: VaultViewModel, folder: String, authenticate: Biomet
                 Box {
                     FloatingActionButton(onClick = { menuOpen = true }, containerColor = MaterialTheme.colorScheme.primary) { Icon(Icons.Default.Add, "Add") }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        DropdownMenuItem(text = { Text("Photos and videos") }, onClick = {
-                            menuOpen = false
-                            viewModel.choosingExternally = true
-                            mediaPicker.launch(Unit)
-                        })
+                        photoSources.forEach { source ->
+                            DropdownMenuItem(text = { Text(photoSourceLabel(source.kind)) }, onClick = {
+                                menuOpen = false
+                                viewModel.choosingExternally = true
+                                val packageName = source.packageName
+                                if (packageName == null) filePicker.launch(PHOTO_AND_VIDEO_TYPES) else mediaPicker.launch(packageName)
+                            })
+                        }
                         DropdownMenuItem(text = { Text("Any file") }, onClick = {
                             menuOpen = false
                             viewModel.choosingExternally = true
@@ -441,4 +448,10 @@ private fun Tile(viewModel: VaultViewModel, item: VaultItem, selected: Boolean, 
             }
         }
     }
+}
+
+private fun photoSourceLabel(kind: PhotoSourceKind): String = when (kind) {
+    PhotoSourceKind.GALLERY -> "From Gallery"
+    PhotoSourceKind.GOOGLE_PHOTOS -> "From Google Photos"
+    PhotoSourceKind.FILES -> "From Files"
 }
