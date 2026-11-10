@@ -2,6 +2,7 @@ package vault.core
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class PhotoSourcesTest {
     private val realmeGallery = InstalledGallery("com.coloros.gallery3d", isSystemApp = true)
@@ -37,5 +38,22 @@ class PhotoSourcesTest {
     @Test
     fun alwaysOffersFiles() {
         assertEquals(listOf(files), photoSources(emptyList(), emptySet()))
+    }
+
+    @Test
+    fun aGalleryThatOnlyReadsTheRequestTypeStillShowsVideosAndPhotos() {
+        assertTrue(typeAllows(GALLERY_REQUEST_TYPE, "video/mp4"), "videos hidden by request type $GALLERY_REQUEST_TYPE")
+        assertTrue(typeAllows(GALLERY_REQUEST_TYPE, "image/jpeg"), "photos hidden by request type $GALLERY_REQUEST_TYPE")
+    }
+
+    @Test
+    fun aGalleryThatReadsTheMimeListIsLimitedToPhotosAndVideos() {
+        assertEquals(listOf("image/*", "video/*"), GALLERY_MIME_TYPES)
+    }
+
+    private fun typeAllows(pattern: String, mimeType: String): Boolean {
+        val (wantedKind, wantedSubtype) = pattern.split('/')
+        val (kind, subtype) = mimeType.split('/')
+        return (wantedKind == "*" || wantedKind == kind) && (wantedSubtype == "*" || wantedSubtype == subtype)
     }
 }

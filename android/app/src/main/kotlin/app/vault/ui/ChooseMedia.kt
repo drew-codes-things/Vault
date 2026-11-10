@@ -7,17 +7,17 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.activity.result.contract.ActivityResultContract
+import vault.core.GALLERY_MIME_TYPES
+import vault.core.GALLERY_REQUEST_TYPE
 import vault.core.InstalledGallery
 import vault.core.PhotoSource
 import vault.core.photoSources
 
-private const val IMAGE_MIME_TYPE = "image/*"
-private const val VIDEO_MIME_TYPE = "video/*"
-val PHOTO_AND_VIDEO_TYPES = arrayOf(IMAGE_MIME_TYPE, VIDEO_MIME_TYPE)
+val PHOTO_AND_VIDEO_TYPES = GALLERY_MIME_TYPES.toTypedArray()
 
 private fun pickPhotosIntent(): Intent = Intent(Intent.ACTION_GET_CONTENT)
     .addCategory(Intent.CATEGORY_OPENABLE)
-    .setType(IMAGE_MIME_TYPE)
+    .setType(GALLERY_REQUEST_TYPE)
     .putExtra(Intent.EXTRA_MIME_TYPES, PHOTO_AND_VIDEO_TYPES)
     .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
 

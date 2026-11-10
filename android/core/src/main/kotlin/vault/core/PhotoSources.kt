@@ -1,6 +1,8 @@
 package vault.core
 
 const val GOOGLE_PHOTOS_PACKAGE = "com.google.android.apps.photos"
+const val GALLERY_REQUEST_TYPE = "*/*"
+val GALLERY_MIME_TYPES = listOf("image/*", "video/*")
 
 enum class PhotoSourceKind { GALLERY, GOOGLE_PHOTOS, FILES }
 
