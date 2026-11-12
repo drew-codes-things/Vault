@@ -18,8 +18,9 @@
 Vault is a native Android app (Kotlin + Jetpack Compose) for keeping photos,
 videos and any other file somewhere only you can open. Everything is encrypted
 on the phone before it's uploaded, so the server only ever stores scrambled
-data - it can't see file names, types, sizes or contents, and neither can
-anyone who gets hold of it.
+data - it can't see file names, types or contents, and neither can anyone
+who gets hold of it. It can see how many files there are, roughly how big each
+one is and when it was added.
 
 Vault talks to your own self-hosted Vault server over HTTPS. The server (Go,
 standard library only) and the Android app's source are both in this
@@ -40,7 +41,7 @@ Vault key (never leaves the phone)            Login key (server keeps only a has
    |
 Every file gets its own random key
         |
-Sealed in 1 MiB chunks with AES-256-GCM  ->  names, sizes and thumbnails encrypted too
+Sealed in 1 MiB chunks with AES-256-GCM  ->  names, types and thumbnails encrypted too
         |
 Uploaded to your server as unreadable blobs
 ```
