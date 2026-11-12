@@ -107,8 +107,12 @@ full backup. With Docker:
 
 ```bash
 echo "VAULT_SETUP_TOKEN=$(openssl rand -hex 32)" > .env && chmod 600 .env
+mkdir -p data && sudo chown 65532:65532 data
 docker compose up -d --build
 ```
+
+The container runs as user 65532, so the data folder must belong to it; a
+folder Docker creates on its own belongs to root and the server cannot start.
 
 It listens on `127.0.0.1:8092`. Put it behind HTTPS (a reverse proxy, or a
 Cloudflare Tunnel pointing at `http://localhost:8092`) - the app only accepts
