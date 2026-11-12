@@ -5,6 +5,9 @@ import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.IOException
+import java.util.concurrent.locks.ReentrantReadWriteLock
+import kotlin.concurrent.read
+import kotlin.concurrent.write
 
 private const val RETRY_BASE_DELAY_MS = 1_000L
 private const val READ_ATTEMPTS = 3
@@ -52,6 +55,7 @@ class UnlockResult(val session: VaultSession, val authKey: ByteArray, val creden
 
 class VaultSession private constructor(val api: VaultApi, private val store: LocalStore, vaultKey: ByteArray) {
     private val vaultKey: ByteArray = vaultKey.copyOf()
+    private val keyGuard = ReentrantReadWriteLock()
 
     @Volatile
     var isLocked: Boolean = false
@@ -59,9 +63,9 @@ class VaultSession private constructor(val api: VaultApi, private val store: Loc
 
     internal var clock: () -> Long = System::currentTimeMillis
 
-    private fun key(): ByteArray {
+    private fun <T> withKey(use: (ByteArray) -> T): T = keyGuard.read {
         check(!isLocked) { "the vault is locked" }
-        return vaultKey
+        use(vaultKey)
     }
 
     fun items(): List<VaultItem> = allEntries().filter { !it.isFolder }
@@ -85,11 +89,10 @@ class VaultSession private constructor(val api: VaultApi, private val store: Loc
     }
 
     private fun allEntries(): List<VaultItem> {
-        val key = key()
-        return store.all()
-            .filter { it.state != SyncState.PENDING_DELETE }
-            .mapNotNull { record -> runCatching { VaultItem(record.localId, openMeta(key, record.sealedMeta), record) }.getOrNull() }
-            .sortedByDescending { it.meta.createdAtMillis }
+        val records = store.all().filter { it.state != SyncState.PENDING_DELETE }
+        return withKey { key ->
+            records.mapNotNull { record -> runCatching { VaultItem(record.localId, openMeta(key, record.sealedMeta), record) }.getOrNull() }
+        }.sortedByDescending { it.meta.createdAtMillis }
     }
 
     fun addFile(
@@ -103,8 +106,9 @@ class VaultSession private constructor(val api: VaultApi, private val store: Loc
         onProgress: (Long) -> Unit = {},
     ): LocalRecord {
         val meta = FileMeta(name, mimeType, plainSize, createdAtMillis, randomBytes(KEY_BYTES), folder)
+        val sealedMeta = withKey { key -> sealMeta(key, meta) }
         val sealedThumb = thumbnail?.let { sealThumb(meta.fileKey, it) }
-        return store.createPending(sealMeta(key(), meta), sealedSize(plainSize), sealedThumb) { out ->
+        return store.createPending(sealedMeta, sealedSize(plainSize), sealedThumb) { out ->
             var written = 0L
             sealStream(meta.fileKey, plainSize, source, 0) { sealed ->
                 out.write(sealed)
@@ -134,14 +138,16 @@ class VaultSession private constructor(val api: VaultApi, private val store: Loc
 
     fun moveToFolder(item: VaultItem, folder: String) {
         val record = store.get(item.id) ?: return
-        val meta = openMeta(key(), record.sealedMeta)
-        if (meta.folder == folder) return
-        store.save(record.copy(sealedMeta = sealMeta(key(), meta.inFolder(folder)), metaDirty = record.remoteId != null))
+        val resealed = withKey { key ->
+            val meta = openMeta(key, record.sealedMeta)
+            if (meta.folder == folder) null else sealMeta(key, meta.inFolder(folder))
+        } ?: return
+        store.save(record.copy(sealedMeta = resealed, metaDirty = record.remoteId != null))
     }
 
-    fun exportVaultKey(): ByteArray = key().copyOf()
+    fun exportVaultKey(): ByteArray = withKey { it.copyOf() }
 
-    fun lock() {
+    fun lock() = keyGuard.write {
         isLocked = true
         vaultKey.fill(0)
     }
