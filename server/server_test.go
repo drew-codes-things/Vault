@@ -6,7 +6,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -18,6 +21,7 @@ type harness struct {
 	server *httptest.Server
 	clock  *time.Time
 	token  string
+	store  *Store
 }
 
 func newHarness(t *testing.T) *harness {
@@ -35,7 +39,7 @@ func newHarness(t *testing.T) *harness {
 	}
 	server := httptest.NewServer(NewAPI(store, auth, testSetupToken))
 	t.Cleanup(server.Close)
-	return &harness{t: t, server: server, clock: &current}
+	return &harness{t: t, server: server, clock: &current, store: store}
 }
 
 func (h *harness) do(method, path string, body io.Reader, headers map[string]string) *http.Response {
@@ -416,4 +420,69 @@ func TestUploadStillReceivingDataIsNotRemovedAsStale(t *testing.T) {
 	if status := h.authed("HEAD", contentPath, nil).StatusCode; status != http.StatusNotFound {
 		t.Fatalf("upload with no data for over a day should be removed, got %d", status)
 	}
+}
+
+func (h *harness) uploadComplete(content string) string {
+	h.t.Helper()
+	var created map[string]string
+	readJSON(h.t, h.authed("POST", "/v1/files", jsonBody(h.t, createFileRequest{Meta: []byte("m")})), &created)
+	id := created["id"]
+	h.authed("PUT", "/v1/files/"+id+"/content?offset=0", strings.NewReader(content))
+	if status := h.authed("POST", "/v1/files/"+id+"/finalize", jsonBody(h.t, finalizeRequest{Size: int64(len(content))})).StatusCode; status != http.StatusNoContent {
+		h.t.Fatalf("finalize status %d", status)
+	}
+	return id
+}
+
+func TestListingReportsAnUnreadableEntryInsteadOfLeavingItOut(t *testing.T) {
+	damages := map[string]func(infoPath string) error{
+		"truncated details": func(infoPath string) error { return os.WriteFile(infoPath, []byte("{trunc"), 0o600) },
+		"missing details":   os.Remove,
+	}
+	for name, damage := range damages {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t)
+			h.setupAccount()
+			h.signIn()
+			h.uploadComplete("kept")
+			damaged := h.uploadComplete("damaged")
+			if err := damage(filepath.Join(h.store.root, "files", damaged, "info.json")); err != nil {
+				t.Fatal(err)
+			}
+			response := h.authed("GET", "/v1/files", nil)
+			if response.StatusCode != http.StatusInternalServerError {
+				var listed []FileInfo
+				readJSON(t, response, &listed)
+				t.Fatalf("listing with one unreadable entry must fail so phones keep their copy, got %d with %d entries", response.StatusCode, len(listed))
+			}
+		})
+	}
+}
+
+func TestListingWhileFilesAreCreatedNeverFails(t *testing.T) {
+	const creators = 4
+	const filesPerCreator = 25
+	const listings = 200
+	h := newHarness(t)
+	h.setupAccount()
+	h.signIn()
+	var group sync.WaitGroup
+	for range creators {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			for range filesPerCreator {
+				if _, err := h.store.CreateFile([]byte("m")); err != nil {
+					t.Error(err)
+					return
+				}
+			}
+		}()
+	}
+	for range listings {
+		if _, err := h.store.List(); err != nil {
+			t.Fatalf("listing during uploads failed: %v", err)
+		}
+	}
+	group.Wait()
 }

@@ -29,6 +29,7 @@ var (
 	ErrTooLarge       = errors.New("payload too large")
 	ErrAccountExists  = errors.New("account already exists")
 	ErrIncomplete     = errors.New("upload size does not match")
+	ErrUnreadableFile = errors.New("stored file details cannot be read")
 	idPattern         = regexp.MustCompile(`^[0-9a-f]{32}$`)
 )
 
@@ -180,6 +181,9 @@ func (s *Store) CreateFile(meta []byte) (string, error) {
 		return "", err
 	}
 	id := hex.EncodeToString(raw)
+	lock := s.fileLock(id)
+	lock.Lock()
+	defer lock.Unlock()
 	dir := filepath.Join(s.root, "files", id)
 	if err := os.Mkdir(dir, 0o700); err != nil {
 		return "", err
@@ -318,8 +322,11 @@ func (s *Store) List() ([]FileInfo, error) {
 			continue
 		}
 		dir := filepath.Join(s.root, "files", entry.Name())
-		info, err := s.readInfo(dir)
+		info, err := s.readInfoForListing(entry.Name(), dir)
 		if err != nil {
+			return nil, err
+		}
+		if info == nil {
 			continue
 		}
 		if !info.Complete {
@@ -332,6 +339,20 @@ func (s *Store) List() ([]FileInfo, error) {
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].CreatedAt.After(files[j].CreatedAt) })
 	return files, nil
+}
+
+func (s *Store) readInfoForListing(id, dir string) (*FileInfo, error) {
+	lock := s.fileLock(id)
+	lock.Lock()
+	defer lock.Unlock()
+	if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	info, err := s.readInfo(dir)
+	if err != nil {
+		return nil, fmt.Errorf("%w: file %s: %v", ErrUnreadableFile, id, err)
+	}
+	return info, nil
 }
 
 func (s *Store) isStale(info *FileInfo) bool {
