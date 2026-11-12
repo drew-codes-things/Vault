@@ -162,6 +162,27 @@ class LocalStore(root: File) {
         }
 
     @Synchronized
+    fun attachRemote(localId: String, remoteId: String): Boolean {
+        val record = get(localId) ?: return false
+        save(record.copy(remoteId = remoteId))
+        return true
+    }
+
+    @Synchronized
+    fun markUploaded(localId: String, remoteId: String, uploadedMeta: ByteArray): Boolean {
+        val record = get(localId)?.takeIf { it.state == SyncState.PENDING_UPLOAD } ?: return false
+        val metaChangedDuringUpload = !record.sealedMeta.contentEquals(uploadedMeta)
+        save(record.copy(remoteId = remoteId, state = SyncState.SYNCED, metaDirty = record.metaDirty || metaChangedDuringUpload))
+        return true
+    }
+
+    @Synchronized
+    fun forgetRemote(localId: String) {
+        val record = get(localId) ?: return
+        if (record.state == SyncState.PENDING_DELETE) remove(localId) else save(record.copy(remoteId = null, metaDirty = false))
+    }
+
+    @Synchronized
     fun markDeleted(localId: String) {
         val record = get(localId) ?: return
         if (record.remoteId == null) remove(localId) else save(record.copy(state = SyncState.PENDING_DELETE))

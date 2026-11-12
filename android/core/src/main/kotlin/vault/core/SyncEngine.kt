@@ -31,14 +31,18 @@ class SyncEngine(private val api: VaultApi, private val store: LocalStore, priva
     private fun pushDeletes(): Int {
         val pending = store.all().filter { it.state == SyncState.PENDING_DELETE }
         for (record in pending) {
-            try {
-                api.delete(record.remoteId ?: error("pending delete without remote id"))
-            } catch (error: ApiException) {
-                if (error.status != NOT_FOUND) throw error
-            }
+            record.remoteId?.let { deleteRemote(it) }
             store.remove(record.localId)
         }
         return pending.size
+    }
+
+    private fun deleteRemote(remoteId: String) {
+        try {
+            api.delete(remoteId)
+        } catch (error: ApiException) {
+            if (error.status != NOT_FOUND) throw error
+        }
     }
 
     private fun pushMetadata() {
@@ -62,21 +66,31 @@ class SyncEngine(private val api: VaultApi, private val store: LocalStore, priva
     private fun upload(record: LocalRecord) {
         val localId = record.localId
         for (attempt in 0..1) {
-            val current = store.get(localId) ?: return
-            val remoteId = current.remoteId ?: api.createFile(current.sealedMeta).also { id ->
-                store.get(localId)?.let { latest -> store.save(latest.copy(remoteId = id)) }
-            }
+            val current = store.get(localId)?.takeIf { it.state == SyncState.PENDING_UPLOAD } ?: return
+            val remoteId = current.remoteId ?: createRemote(current) ?: return
             try {
                 sendContent(remoteId, current)
                 if (current.hasThumb) api.putThumb(remoteId, store.thumb(localId) ?: throw IOException("thumbnail missing"))
                 api.finalize(remoteId, current.sealedSize)
-                store.get(localId)?.let { latest -> store.save(latest.copy(remoteId = remoteId, state = SyncState.SYNCED)) }
+                if (!store.markUploaded(localId, remoteId, current.sealedMeta)) discardUpload(localId, remoteId)
                 return
             } catch (error: ApiException) {
                 if (error.status != NOT_FOUND || attempt == 1) throw error
-                store.get(localId)?.let { latest -> store.save(latest.copy(remoteId = null, metaDirty = false)) }
+                store.forgetRemote(localId)
             }
         }
+    }
+
+    private fun createRemote(record: LocalRecord): String? {
+        val remoteId = api.createFile(record.sealedMeta)
+        if (store.attachRemote(record.localId, remoteId)) return remoteId
+        deleteRemote(remoteId)
+        return null
+    }
+
+    private fun discardUpload(localId: String, remoteId: String) {
+        deleteRemote(remoteId)
+        store.remove(localId)
     }
 
     private fun sendContent(remoteId: String, record: LocalRecord) {

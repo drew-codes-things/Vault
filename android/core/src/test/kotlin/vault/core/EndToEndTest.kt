@@ -2,9 +2,13 @@ package vault.core
 
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import com.sun.net.httpserver.HttpServer
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.URI
 import java.nio.file.Files
 import kotlin.random.Random
 import kotlin.test.AfterTest
@@ -20,14 +24,19 @@ private const val PASSPHRASE = "correct horse battery"
 private val fastParams = KdfParams(ByteArray(16) { 3 }, 1, 64, 1)
 private val fastFloor = KdfFloor(fastParams.iterations, fastParams.memoryKiB)
 
+private val RELAYED_REQUEST_HEADERS = listOf("Authorization", "Content-Type", "Range", "X-Setup-Token")
+private val METHODS_WITH_BODY = setOf("POST", "PUT")
+
 private fun bytesSource(bytes: ByteArray) = PlainSource { skip -> ByteArrayInputStream(bytes, skip.toInt(), bytes.size - skip.toInt()) }
 
 class EndToEndTest {
     private var process: Process? = null
+    private var relay: HttpServer? = null
     private val tempDirs = mutableListOf<File>()
 
     @AfterTest
     fun cleanUp() {
+        relay?.stop(0)
         process?.destroy()
         process?.waitFor()
         tempDirs.forEach { it.deleteRecursively() }
@@ -49,6 +58,35 @@ class EndToEndTest {
             Thread.sleep(50)
         }
         error("server did not start")
+    }
+
+    private fun startRelay(serverUrl: String, beforeForwarding: (method: String, path: String) -> Unit): String {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/") { exchange ->
+            exchange.use {
+                beforeForwarding(exchange.requestMethod, exchange.requestURI.path)
+                val upstream = URI(serverUrl + exchange.requestURI).toURL().openConnection() as HttpURLConnection
+                upstream.requestMethod = exchange.requestMethod
+                RELAYED_REQUEST_HEADERS.forEach { name -> exchange.requestHeaders.getFirst(name)?.let { upstream.setRequestProperty(name, it) } }
+                val body = exchange.requestBody.readBytes()
+                if (exchange.requestMethod in METHODS_WITH_BODY) {
+                    upstream.doOutput = true
+                    upstream.outputStream.use { it.write(body) }
+                }
+                val status = upstream.responseCode
+                val reply = (if (status >= 400) upstream.errorStream else upstream.inputStream)?.use { it.readBytes() } ?: ByteArray(0)
+                if (exchange.requestMethod == "HEAD") {
+                    upstream.getHeaderField("Content-Length")?.let { exchange.responseHeaders.set("Content-Length", it) }
+                    exchange.sendResponseHeaders(status, -1)
+                } else {
+                    exchange.sendResponseHeaders(status, if (reply.isEmpty()) -1 else reply.size.toLong())
+                    if (reply.isNotEmpty()) exchange.responseBody.write(reply)
+                }
+            }
+        }
+        server.start()
+        relay = server
+        return "http://127.0.0.1:${server.address.port}"
     }
 
     private fun newDevice(url: String, create: Boolean = false): Triple<VaultApi, LocalStore, UnlockResult> {
@@ -329,6 +367,81 @@ class EndToEndTest {
         assertFailsWith<IllegalStateException> { a.session.moveToFolder(item, "Holidays") }
         assertFailsWith<IllegalStateException> { a.session.items() }
         assertFailsWith<IllegalStateException> { a.session.exportVaultKey() }
+        assertEquals(1, storeA.all().size)
+    }
+
+    @Test
+    fun aFileDeletedWhileItUploadsStaysDeleted() {
+        val url = startServer() ?: return
+        val (apiA, _, a) = newDevice(url, create = true)
+        var deleteOnFinalize: () -> Unit = {}
+        val relayUrl = startRelay(url) { method, path -> if (method == "POST" && path.endsWith("/finalize")) deleteOnFinalize() }
+        val relayedApi = VaultApi(relayUrl, apiA.token)
+        val storeA = LocalStore(tempDir("device"))
+        val session = VaultSession.withVaultKey(relayedApi, storeA, a.session.exportVaultKey())
+        session.addFile("regret.jpg", "image/jpeg", 6, 1L, bytesSource("regret".toByteArray()), null)
+        deleteOnFinalize = { session.delete(session.items().single()) }
+
+        SyncEngine(relayedApi, storeA).sync()
+
+        assertTrue(session.items().isEmpty())
+        SyncEngine(relayedApi, storeA).sync()
+        assertTrue(session.items().isEmpty())
+        assertTrue(apiA.listFiles().isEmpty())
+        assertTrue(storeA.all().isEmpty())
+    }
+
+    @Test
+    fun aFileDeletedBeforeTheServerKnewItLeavesNothingBehind() {
+        val url = startServer() ?: return
+        val (apiA, _, a) = newDevice(url, create = true)
+        var deleteOnCreate: () -> Unit = {}
+        val relayUrl = startRelay(url) { method, path -> if (method == "POST" && path == "/v1/files") deleteOnCreate() }
+        val relayedApi = VaultApi(relayUrl, apiA.token)
+        val storeA = LocalStore(tempDir("device"))
+        val session = VaultSession.withVaultKey(relayedApi, storeA, a.session.exportVaultKey())
+        session.addFile("regret.jpg", "image/jpeg", 6, 1L, bytesSource("regret".toByteArray()), null)
+        deleteOnCreate = { session.delete(session.items().single()) }
+
+        SyncEngine(relayedApi, storeA).sync()
+
+        assertTrue(session.items().isEmpty())
+        assertTrue(apiA.listFiles().isEmpty())
+        assertTrue(storeA.all().isEmpty())
+    }
+
+    @Test
+    fun aMoveMadeWhileTheUploadStartsReachesTheServer() {
+        val url = startServer() ?: return
+        val (apiA, _, a) = newDevice(url, create = true)
+        var moveOnCreate: () -> Unit = {}
+        val relayUrl = startRelay(url) { method, path -> if (method == "POST" && path == "/v1/files") moveOnCreate() }
+        val relayedApi = VaultApi(relayUrl, apiA.token)
+        val storeA = LocalStore(tempDir("device"))
+        val session = VaultSession.withVaultKey(relayedApi, storeA, a.session.exportVaultKey())
+        session.addFile("trip.jpg", "image/jpeg", 4, 1L, bytesSource("trip".toByteArray()), null)
+        moveOnCreate = { session.moveToFolder(session.items().single(), "Trips") }
+
+        SyncEngine(relayedApi, storeA).sync()
+
+        assertEquals("Trips", session.items().single().meta.folder)
+        val (apiB, storeB, b) = newDevice(url)
+        SyncEngine(apiB, storeB).sync()
+        assertEquals("Trips", b.session.items().single().meta.folder)
+    }
+
+    @Test
+    fun aPendingDeleteWithNoServerCopyIsDroppedInsteadOfBlockingSync() {
+        val url = startServer() ?: return
+        val (apiA, storeA, a) = newDevice(url, create = true)
+        val stranded = a.session.addFile("gone.txt", "text/plain", 4, 1L, bytesSource("gone".toByteArray()), null)
+        storeA.save(stranded.copy(state = SyncState.PENDING_DELETE))
+        a.session.addFile("kept.txt", "text/plain", 4, 2L, bytesSource("kept".toByteArray()), null)
+
+        val report = SyncEngine(apiA, storeA).sync()
+
+        assertEquals(1, report.uploaded)
+        assertEquals(listOf("kept.txt"), a.session.items().map { it.meta.name })
         assertEquals(1, storeA.all().size)
     }
 }
