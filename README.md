@@ -82,14 +82,15 @@ Requires Android 9 or newer.
 
 ## Download
 
-Grab `Vault-1.3.apk` (about 10 MB) from the [Releases](../../releases) page,
-open it on your phone and allow installs from your browser or file manager
-when Android asks.
+Grab the latest `Vault-<version>.apk` (about 10 MB) from the
+[Releases](../../releases) page, open it on your phone and allow installs from
+your browser or file manager when Android asks.
 
-To check the download:
+To check the download, compare its SHA-256 with the one in that release's
+notes, and the signing certificate with this one (`apksigner verify
+--print-certs` shows it):
 
 ```
-SHA-256:              e0f87a298257066e587e03cb9d135161df1b0ed844fa37a9e9f9e1dcedc2b06b
 Signing certificate:  5352d597c8b00e76f032df64c9f91f30965d4753156087c677d19b95af5bd017
 ```
 
