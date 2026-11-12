@@ -16,6 +16,12 @@ const val PLAIN_CHUNK_BYTES = 1 shl 20
 const val SEALED_CHUNK_BYTES = PLAIN_CHUNK_BYTES + GCM_TAG_BYTES
 
 private const val GCM_TAG_BITS = GCM_TAG_BYTES * 8
+private const val DEFAULT_KDF_ITERATIONS = 3
+private const val DEFAULT_KDF_MEMORY_KIB = 65536
+private const val MIN_KDF_SALT_BYTES = 16
+private const val MAX_KDF_ITERATIONS = 64
+private const val MAX_KDF_MEMORY_KIB = 1 shl 20
+private const val MAX_KDF_PARALLELISM = 16
 private val random = SecureRandom()
 
 class DecryptionException(message: String, cause: Throwable? = null) : GeneralSecurityException(message, cause)
@@ -29,10 +35,24 @@ data class KdfParams(
 
 class DerivedKeys(val masterKey: ByteArray, val authKey: ByteArray)
 
+class UntrustedServerException(message: String) : GeneralSecurityException(message)
+
+data class KdfFloor(val iterations: Int, val memoryKiB: Int)
+
+val STANDARD_KDF_FLOOR = KdfFloor(DEFAULT_KDF_ITERATIONS, DEFAULT_KDF_MEMORY_KIB)
+
 fun randomBytes(count: Int): ByteArray = ByteArray(count).also(random::nextBytes)
 
-fun newKdfParams(iterations: Int = 3, memoryKiB: Int = 65536, parallelism: Int = 1): KdfParams =
-    KdfParams(randomBytes(16), iterations, memoryKiB, parallelism)
+fun newKdfParams(iterations: Int = DEFAULT_KDF_ITERATIONS, memoryKiB: Int = DEFAULT_KDF_MEMORY_KIB, parallelism: Int = 1): KdfParams =
+    KdfParams(randomBytes(MIN_KDF_SALT_BYTES), iterations, memoryKiB, parallelism)
+
+fun requireTrustworthyKdf(params: KdfParams, floor: KdfFloor = STANDARD_KDF_FLOOR) {
+    val isTrustworthy = params.salt.size >= MIN_KDF_SALT_BYTES &&
+        params.iterations in floor.iterations..MAX_KDF_ITERATIONS &&
+        params.memoryKiB in floor.memoryKiB..MAX_KDF_MEMORY_KIB &&
+        params.parallelism in 1..MAX_KDF_PARALLELISM
+    if (!isTrustworthy) throw UntrustedServerException("The server asked for passkey protection this app does not accept")
+}
 
 fun deriveKeys(passphrase: CharArray, params: KdfParams): DerivedKeys {
     val normalized = Normalizer.normalize(String(passphrase), Normalizer.Form.NFKC)

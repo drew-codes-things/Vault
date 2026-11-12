@@ -155,14 +155,23 @@ class VaultSession private constructor(val api: VaultApi, private val store: Loc
     }
 
     companion object {
-        fun createAccount(api: VaultApi, store: LocalStore, setupToken: String, passphrase: CharArray, params: KdfParams = newKdfParams()): UnlockResult {
+        fun createAccount(
+            api: VaultApi,
+            store: LocalStore,
+            setupToken: String,
+            passphrase: CharArray,
+            params: KdfParams = newKdfParams(),
+            kdfFloor: KdfFloor = STANDARD_KDF_FLOOR,
+        ): UnlockResult {
+            requireTrustworthyKdf(params, kdfFloor)
             val keys = deriveKeys(passphrase, params)
             api.createAccount(setupToken, params, keys.authKey, wrapVaultKey(keys.masterKey, randomBytes(KEY_BYTES)))
-            return unlockOnline(api, store, passphrase)
+            return unlockOnline(api, store, passphrase, kdfFloor)
         }
 
-        fun unlockOnline(api: VaultApi, store: LocalStore, passphrase: CharArray): UnlockResult {
+        fun unlockOnline(api: VaultApi, store: LocalStore, passphrase: CharArray, kdfFloor: KdfFloor = STANDARD_KDF_FLOOR): UnlockResult {
             val kdf = api.getKdf()
+            requireTrustworthyKdf(kdf, kdfFloor)
             val keys = deriveKeys(passphrase, kdf)
             val login = api.login(keys.authKey)
             val vaultKey = try {

@@ -18,6 +18,7 @@ import kotlin.test.assertTrue
 private const val SETUP_TOKEN = "e2e-setup-token"
 private const val PASSPHRASE = "correct horse battery"
 private val fastParams = KdfParams(ByteArray(16) { 3 }, 1, 64, 1)
+private val fastFloor = KdfFloor(fastParams.iterations, fastParams.memoryKiB)
 
 private fun bytesSource(bytes: ByteArray) = PlainSource { skip -> ByteArrayInputStream(bytes, skip.toInt(), bytes.size - skip.toInt()) }
 
@@ -54,9 +55,9 @@ class EndToEndTest {
         val api = VaultApi(url)
         val store = LocalStore(tempDir("device"))
         val result = if (create) {
-            VaultSession.createAccount(api, store, SETUP_TOKEN, PASSPHRASE.toCharArray(), fastParams)
+            VaultSession.createAccount(api, store, SETUP_TOKEN, PASSPHRASE.toCharArray(), fastParams, fastFloor)
         } else {
-            VaultSession.unlockOnline(api, store, PASSPHRASE.toCharArray())
+            VaultSession.unlockOnline(api, store, PASSPHRASE.toCharArray(), fastFloor)
         }
         return Triple(api, store, result)
     }
@@ -191,12 +192,12 @@ class EndToEndTest {
         val url = startServer() ?: return
         newDevice(url, create = true)
         val denied = assertFailsWith<ApiException> {
-            VaultSession.unlockOnline(VaultApi(url), LocalStore(tempDir("x")), "wrong passphrase".toCharArray())
+            VaultSession.unlockOnline(VaultApi(url), LocalStore(tempDir("x")), "wrong passphrase".toCharArray(), fastFloor)
         }
         assertEquals(401, denied.status)
         assertFailsWith<ApiException> { VaultApi(url).listFiles() }
         val bad = assertFailsWith<ApiException> {
-            VaultSession.createAccount(VaultApi(url), LocalStore(tempDir("y")), "wrong-token", "x".toCharArray(), fastParams)
+            VaultSession.createAccount(VaultApi(url), LocalStore(tempDir("y")), "wrong-token", "x".toCharArray(), fastParams, fastFloor)
         }
         assertEquals(403, bad.status)
     }
