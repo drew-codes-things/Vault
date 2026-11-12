@@ -18,6 +18,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import org.junit.jupiter.api.Assumptions.assumeTrue
 
 private const val SETUP_TOKEN = "e2e-setup-token"
 private const val PASSPHRASE = "correct horse battery"
@@ -44,9 +45,9 @@ class EndToEndTest {
 
     private fun tempDir(prefix: String): File = Files.createTempDirectory(prefix).toFile().also { tempDirs += it }
 
-    private fun startServer(): String? {
-        val binary = File(System.getenv("VAULT_SERVER_BIN") ?: return null)
-        if (!binary.canExecute()) return null
+    private fun startServer(): String {
+        val binary = File(System.getenv("VAULT_SERVER_BIN").orEmpty())
+        assumeTrue(binary.canExecute(), "server/vault-server is not built, so the end-to-end tests are skipped")
         val port = ServerSocket(0).use { it.localPort }
         val data = tempDir("vault-e2e")
         val builder = ProcessBuilder(binary.path)
@@ -104,7 +105,7 @@ class EndToEndTest {
 
     @Test
     fun filesAddedOfflineUploadOnSyncAndReachOtherDevices() {
-        val url = startServer() ?: return
+        val url = startServer()
         val (apiA, storeA, a) = newDevice(url, create = true)
         val video = Random(1).nextBytes(2 * PLAIN_CHUNK_BYTES + 12345)
         val thumb = Random(2).nextBytes(4000)
@@ -132,7 +133,7 @@ class EndToEndTest {
 
     @Test
     fun deletesPropagateBetweenDevices() {
-        val url = startServer() ?: return
+        val url = startServer()
         val (apiA, storeA, a) = newDevice(url, create = true)
         a.session.addFile("a.txt", "text/plain", 5, 1L, bytesSource("hello".toByteArray()), null)
         SyncEngine(apiA, storeA).sync()
@@ -149,7 +150,7 @@ class EndToEndTest {
 
     @Test
     fun deletingAFileThatNeverUploadedStaysLocal() {
-        val url = startServer() ?: return
+        val url = startServer()
         val (apiA, storeA, a) = newDevice(url, create = true)
         a.session.addFile("draft.txt", "text/plain", 3, 1L, bytesSource("abc".toByteArray()), null)
         a.session.delete(a.session.items().single())
@@ -161,7 +162,7 @@ class EndToEndTest {
 
     @Test
     fun offlineUnlockUsesLocalCopyAndRejectsWrongPassphrase() {
-        val url = startServer() ?: return
+        val url = startServer()
         val (apiA, storeA, a) = newDevice(url, create = true)
         val data = Random(3).nextBytes(PLAIN_CHUNK_BYTES + 77)
         a.session.addFile("doc.bin", "application/octet-stream", data.size.toLong(), 1L, bytesSource(data), null)
@@ -181,7 +182,7 @@ class EndToEndTest {
 
     @Test
     fun interruptedUploadResumesFromServerSize() {
-        val url = startServer() ?: return
+        val url = startServer()
         val (apiA, storeA, a) = newDevice(url, create = true)
         val data = Random(4).nextBytes(3 * PLAIN_CHUNK_BYTES + 999)
         val record = a.session.addFile("big.bin", "application/octet-stream", data.size.toLong(), 1L, bytesSource(data), null)
@@ -197,7 +198,7 @@ class EndToEndTest {
 
     @Test
     fun uploadStartsOverWhenServerNoLongerHasTheIncompleteFile() {
-        val url = startServer() ?: return
+        val url = startServer()
         val (apiA, storeA, a) = newDevice(url, create = true)
         val record = a.session.addFile("n.txt", "text/plain", 4, 1L, bytesSource("data".toByteArray()), null)
         storeA.save(record.copy(remoteId = "0".repeat(32)))
@@ -207,7 +208,7 @@ class EndToEndTest {
 
     @Test
     fun partialDownloadResumesAndStreamingWorksBeforeDownload() {
-        val url = startServer() ?: return
+        val url = startServer()
         val (apiA, storeA, a) = newDevice(url, create = true)
         val data = Random(5).nextBytes(3 * PLAIN_CHUNK_BYTES + 5)
         a.session.addFile("v.mp4", "video/mp4", data.size.toLong(), 1L, bytesSource(data), null)
@@ -227,7 +228,7 @@ class EndToEndTest {
 
     @Test
     fun wrongPassphraseAndUnauthenticatedAccessAreRejected() {
-        val url = startServer() ?: return
+        val url = startServer()
         newDevice(url, create = true)
         val denied = assertFailsWith<ApiException> {
             VaultSession.unlockOnline(VaultApi(url), LocalStore(tempDir("x")), "wrong passphrase".toCharArray(), fastFloor)
@@ -242,7 +243,7 @@ class EndToEndTest {
 
     @Test
     fun logoutRevokesTheSessionOnTheServer() {
-        val url = startServer() ?: return
+        val url = startServer()
         val (api, _, result) = newDevice(url, create = true)
         val token = api.token!!
         result.session.logout()
@@ -263,7 +264,7 @@ class EndToEndTest {
 
     @Test
     fun concurrentSyncsDoNotDuplicateFiles() {
-        val url = startServer() ?: return
+        val url = startServer()
         val (apiA, storeA, a) = newDevice(url, create = true)
         repeat(3) { index -> a.session.addFile("f$index.txt", "text/plain", 1, index.toLong(), bytesSource(byteArrayOf(index.toByte())), null) }
         SyncEngine(apiA, storeA).sync()
@@ -277,7 +278,7 @@ class EndToEndTest {
 
     @Test
     fun duplicateRecordsForTheSameServerFileAreRemoved() {
-        val url = startServer() ?: return
+        val url = startServer()
         val (apiA, storeA, a) = newDevice(url, create = true)
         a.session.addFile("once.txt", "text/plain", 4, 1L, bytesSource("once".toByteArray()), null)
         SyncEngine(apiA, storeA).sync()
@@ -291,7 +292,7 @@ class EndToEndTest {
 
     @Test
     fun foldersSyncAndMovesReachOtherDevices() {
-        val url = startServer() ?: return
+        val url = startServer()
         val (apiA, storeA, a) = newDevice(url, create = true)
         a.session.addFile("us.jpg", "image/jpeg", 2, 1L, bytesSource("us".toByteArray()), null, folder = "Holidays")
         a.session.addFile("loose.txt", "text/plain", 1, 2L, bytesSource("l".toByteArray()), null)
@@ -314,7 +315,7 @@ class EndToEndTest {
 
     @Test
     fun movingAFileBeforeItUploadsNeedsNoExtraRequest() {
-        val url = startServer() ?: return
+        val url = startServer()
         val (apiA, storeA, a) = newDevice(url, create = true)
         a.session.addFile("later.txt", "text/plain", 1, 1L, bytesSource("x".toByteArray()), null)
         a.session.moveToFolder(a.session.items().single(), "Work")
@@ -327,7 +328,7 @@ class EndToEndTest {
 
     @Test
     fun foldersAreCreatedDeletedAndSyncedWithTheirFiles() {
-        val url = startServer() ?: return
+        val url = startServer()
         val (apiA, storeA, a) = newDevice(url, create = true)
         listOf("Family", "Work", "Holidays").forEach { a.session.createFolder(it) }
         assertEquals(listOf("Family", "Work", "Holidays"), a.session.folders())
@@ -355,7 +356,7 @@ class EndToEndTest {
 
     @Test
     fun aLockedSessionRefusesToEncryptOrRead() {
-        val url = startServer() ?: return
+        val url = startServer()
         val (_, storeA, a) = newDevice(url, create = true)
         a.session.addFile("before.txt", "text/plain", 1, 1L, bytesSource("b".toByteArray()), null)
         val item = a.session.items().single()
@@ -372,7 +373,7 @@ class EndToEndTest {
 
     @Test
     fun aFileDeletedWhileItUploadsStaysDeleted() {
-        val url = startServer() ?: return
+        val url = startServer()
         val (apiA, _, a) = newDevice(url, create = true)
         var deleteOnFinalize: () -> Unit = {}
         val relayUrl = startRelay(url) { method, path -> if (method == "POST" && path.endsWith("/finalize")) deleteOnFinalize() }
@@ -393,7 +394,7 @@ class EndToEndTest {
 
     @Test
     fun aFileDeletedBeforeTheServerKnewItLeavesNothingBehind() {
-        val url = startServer() ?: return
+        val url = startServer()
         val (apiA, _, a) = newDevice(url, create = true)
         var deleteOnCreate: () -> Unit = {}
         val relayUrl = startRelay(url) { method, path -> if (method == "POST" && path == "/v1/files") deleteOnCreate() }
@@ -412,7 +413,7 @@ class EndToEndTest {
 
     @Test
     fun aMoveMadeWhileTheUploadStartsReachesTheServer() {
-        val url = startServer() ?: return
+        val url = startServer()
         val (apiA, _, a) = newDevice(url, create = true)
         var moveOnCreate: () -> Unit = {}
         val relayUrl = startRelay(url) { method, path -> if (method == "POST" && path == "/v1/files") moveOnCreate() }
@@ -432,7 +433,7 @@ class EndToEndTest {
 
     @Test
     fun aPendingDeleteWithNoServerCopyIsDroppedInsteadOfBlockingSync() {
-        val url = startServer() ?: return
+        val url = startServer()
         val (apiA, storeA, a) = newDevice(url, create = true)
         val stranded = a.session.addFile("gone.txt", "text/plain", 4, 1L, bytesSource("gone".toByteArray()), null)
         storeA.save(stranded.copy(state = SyncState.PENDING_DELETE))
