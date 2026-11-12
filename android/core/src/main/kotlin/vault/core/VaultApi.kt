@@ -12,6 +12,10 @@ class ApiException(val status: Int, message: String, val retryAfterSeconds: Int 
 
 fun serverIsUnavailable(error: IOException): Boolean = error !is ApiException || error.status >= FIRST_SERVER_FAILURE_STATUS
 
+fun loginIsPaused(error: IOException): Boolean = error is ApiException && error.status == TOO_MANY_ATTEMPTS
+
+fun isTemporaryServerProblem(error: IOException): Boolean = serverIsUnavailable(error) || loginIsPaused(error)
+
 class RemoteFile(val id: String, val sealedMeta: ByteArray, val sealedSize: Long, val hasThumb: Boolean, val createdAtIso: String)
 
 class LoginResult(val token: String, val wrappedVaultKey: ByteArray)
@@ -19,6 +23,7 @@ class LoginResult(val token: String, val wrappedVaultKey: ByteArray)
 private const val CONNECT_TIMEOUT_MS = 15_000
 private const val READ_TIMEOUT_MS = 60_000
 private const val FIRST_SERVER_FAILURE_STATUS = 500
+private const val TOO_MANY_ATTEMPTS = 429
 
 private fun encode(bytes: ByteArray): String = Base64.getEncoder().encodeToString(bytes)
 

@@ -13,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import vault.core.ApiException
 import vault.core.SyncEngine
+import vault.core.isTemporaryServerProblem
 import java.io.IOException
 
 private const val CHANNEL_ID = "sync"
@@ -33,7 +34,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         } catch (error: ApiException) {
             Log.w("Vault", "sync rejected by server", error)
             if (error.status == UNAUTHORIZED) environment.forgetAuthKey()
-            if (error.status in 500..599) Result.retry() else Result.failure()
+            if (isTemporaryServerProblem(error)) Result.retry() else Result.failure()
         } catch (error: IOException) {
             Log.w("Vault", "sync interrupted, will retry", error)
             Result.retry()
