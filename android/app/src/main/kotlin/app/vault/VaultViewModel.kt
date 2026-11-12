@@ -632,7 +632,7 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun stageLocally(uri: Uri, name: String): File? {
-        val target = File(context.cacheDir, "staging").apply { mkdirs() }.let { File.createTempFile("add-", ".bin", it) }
+        val target = environment.staging.newFile()
         return try {
             val input = context.contentResolver.openInputStream(uri) ?: throw IOException("cannot open $name")
             input.use { stream -> FileOutputStream(target).use { out -> stream.copyTo(out) } }

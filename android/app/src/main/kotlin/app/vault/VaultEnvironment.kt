@@ -1,6 +1,7 @@
 package app.vault
 
 import android.content.Context
+import android.util.Log
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -11,6 +12,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import vault.core.LocalStore
 import vault.core.OfflineCredentials
+import vault.core.StagingArea
 import vault.core.VaultApi
 import vault.core.normaliseServerUrl
 import java.io.File
@@ -31,6 +33,11 @@ class VaultEnvironment private constructor(context: Context) {
     private val serverPrefs = appContext.getSharedPreferences(SERVER_PREFS, Context.MODE_PRIVATE)
     val store = LocalStore(File(appContext.filesDir, "vault"))
     val secrets = DeviceSecrets(File(appContext.filesDir, "secrets"))
+    val staging = StagingArea(File(appContext.cacheDir, "staging"))
+
+    init {
+        if (!staging.clear()) Log.w("Vault", "could not remove every unencrypted staged copy")
+    }
 
     /** The user picks the server at setup unless a build bakes one in. */
     val serverConfigurable: Boolean = BuildConfig.SERVER_CONFIGURABLE
