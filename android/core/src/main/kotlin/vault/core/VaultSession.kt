@@ -57,6 +57,8 @@ class VaultSession private constructor(val api: VaultApi, private val store: Loc
     var isLocked: Boolean = false
         private set
 
+    internal var clock: () -> Long = System::currentTimeMillis
+
     private fun key(): ByteArray {
         check(!isLocked) { "the vault is locked" }
         return vaultKey
@@ -70,7 +72,12 @@ class VaultSession private constructor(val api: VaultApi, private val store: Loc
         val trimmed = name.trim()
         require(trimmed.isNotEmpty() && trimmed.length <= MAX_FOLDER_NAME_LENGTH) { "Folder names need 1 to $MAX_FOLDER_NAME_LENGTH characters" }
         require(folders().none { it.equals(trimmed, ignoreCase = true) }) { "A folder called $trimmed already exists" }
-        addFile(trimmed, FOLDER_MIME, 0, System.currentTimeMillis(), PlainSource { java.io.ByteArrayInputStream(ByteArray(0)) }, null)
+        addFile(trimmed, FOLDER_MIME, 0, timeAfterNewestFolder(), PlainSource { java.io.ByteArrayInputStream(ByteArray(0)) }, null)
+    }
+
+    private fun timeAfterNewestFolder(): Long {
+        val newest = allEntries().filter { it.isFolder }.maxOfOrNull { it.meta.createdAtMillis } ?: return clock()
+        return maxOf(clock(), newest + 1)
     }
 
     fun deleteFolder(name: String) {
