@@ -386,3 +386,34 @@ func TestMetadataCanBeReplaced(t *testing.T) {
 		t.Fatalf("unauthenticated meta update expected 401, got %d", status)
 	}
 }
+
+func TestUploadStillReceivingDataIsNotRemovedAsStale(t *testing.T) {
+	h := newHarness(t)
+	h.setupAccount()
+	h.signIn()
+	var created map[string]string
+	readJSON(t, h.authed("POST", "/v1/files", jsonBody(t, createFileRequest{Meta: []byte("m")})), &created)
+	contentPath := "/v1/files/" + created["id"] + "/content"
+	h.authed("PUT", contentPath+"?offset=0", strings.NewReader("first"))
+
+	*h.clock = h.clock.Add(staleUploadAge - time.Hour)
+	h.signIn()
+	if status := h.authed("PUT", contentPath+"?offset=5", strings.NewReader("second")).StatusCode; status != http.StatusOK {
+		t.Fatalf("append one hour before the stale age should work, got %d", status)
+	}
+
+	*h.clock = h.clock.Add(2 * time.Hour)
+	h.signIn()
+	h.authed("GET", "/v1/files", nil)
+	response := h.authed("HEAD", contentPath, nil)
+	if response.StatusCode != http.StatusOK || response.ContentLength != int64(len("firstsecond")) {
+		t.Fatalf("upload that received data two hours ago must survive listing, got %d with %d bytes", response.StatusCode, response.ContentLength)
+	}
+
+	*h.clock = h.clock.Add(staleUploadAge)
+	h.signIn()
+	h.authed("GET", "/v1/files", nil)
+	if status := h.authed("HEAD", contentPath, nil).StatusCode; status != http.StatusNotFound {
+		t.Fatalf("upload with no data for over a day should be removed, got %d", status)
+	}
+}

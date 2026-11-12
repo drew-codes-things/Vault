@@ -46,12 +46,20 @@ type Account struct {
 }
 
 type FileInfo struct {
-	ID        string    `json:"id"`
-	Meta      []byte    `json:"meta"`
-	Size      int64     `json:"size"`
-	HasThumb  bool      `json:"hasThumb"`
-	Complete  bool      `json:"complete"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID           string    `json:"id"`
+	Meta         []byte    `json:"meta"`
+	Size         int64     `json:"size"`
+	HasThumb     bool      `json:"hasThumb"`
+	Complete     bool      `json:"complete"`
+	CreatedAt    time.Time `json:"createdAt"`
+	LastAppendAt time.Time `json:"lastAppendAt,omitzero"`
+}
+
+func (info *FileInfo) lastActivity() time.Time {
+	if info.LastAppendAt.After(info.CreatedAt) {
+		return info.LastAppendAt
+	}
+	return info.CreatedAt
 }
 
 type Store struct {
@@ -226,6 +234,10 @@ func (s *Store) AppendContent(id string, offset int64, body io.Reader) (int64, e
 	if err := file.Sync(); err != nil {
 		return offset + written, err
 	}
+	info.LastAppendAt = s.now().UTC()
+	if err := s.writeInfo(dir, info); err != nil {
+		return offset + written, err
+	}
 	return offset + written, nil
 }
 
@@ -311,7 +323,7 @@ func (s *Store) List() ([]FileInfo, error) {
 			continue
 		}
 		if !info.Complete {
-			if s.now().Sub(info.CreatedAt) > staleUploadAge {
+			if s.isStale(info) {
 				s.removeStale(entry.Name(), dir)
 			}
 			continue
@@ -322,12 +334,16 @@ func (s *Store) List() ([]FileInfo, error) {
 	return files, nil
 }
 
+func (s *Store) isStale(info *FileInfo) bool {
+	return !info.Complete && s.now().Sub(info.lastActivity()) > staleUploadAge
+}
+
 func (s *Store) removeStale(id, dir string) {
 	lock := s.fileLock(id)
 	lock.Lock()
 	defer lock.Unlock()
 	info, err := s.readInfo(dir)
-	if err != nil || info.Complete {
+	if err != nil || !s.isStale(info) {
 		return
 	}
 	if err := os.RemoveAll(dir); err != nil {
