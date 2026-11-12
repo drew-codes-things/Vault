@@ -10,12 +10,15 @@ import java.util.Base64
 
 class ApiException(val status: Int, message: String, val retryAfterSeconds: Int = 0) : IOException(message)
 
+fun serverIsUnavailable(error: IOException): Boolean = error !is ApiException || error.status >= FIRST_SERVER_FAILURE_STATUS
+
 class RemoteFile(val id: String, val sealedMeta: ByteArray, val sealedSize: Long, val hasThumb: Boolean, val createdAtIso: String)
 
 class LoginResult(val token: String, val wrappedVaultKey: ByteArray)
 
 private const val CONNECT_TIMEOUT_MS = 15_000
 private const val READ_TIMEOUT_MS = 60_000
+private const val FIRST_SERVER_FAILURE_STATUS = 500
 
 private fun encode(bytes: ByteArray): String = Base64.getEncoder().encodeToString(bytes)
 
@@ -46,7 +49,7 @@ class VaultApi(baseUrl: String, var token: String? = null) {
 
     private fun failure(connection: HttpURLConnection): ApiException {
         val body = readAll(connection.errorStream).toString(Charsets.UTF_8)
-        val message = runCatching { JSONObject(body).optString("error", body) }.getOrDefault(body)
+        val message = runCatching { JSONObject(body).optString("error") }.getOrDefault("")
         val retry = connection.getHeaderField("Retry-After")?.toIntOrNull() ?: 0
         return ApiException(connection.responseCode, message.ifEmpty { "HTTP ${connection.responseCode}" }, retry)
     }

@@ -38,6 +38,7 @@ import vault.core.VaultItem
 import vault.core.VaultSession
 import vault.core.mediaKindOf
 import vault.core.sealedSize
+import vault.core.serverIsUnavailable
 import vault.core.skipFully
 import java.io.File
 import java.io.FileOutputStream
@@ -337,7 +338,7 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
             limiter.recordSuccess()
             Log.i("Vault", "unlocked online")
         } catch (error: IOException) {
-            if (error is ApiException || setupToken != null) throw error
+            if (!serverIsUnavailable(error) || setupToken != null) throw error
             val credentials = environment.offlineCredentials() ?: throw error
             val waitMs = limiter.remainingLockoutMs()
             if (waitMs > 0) throw ApiException(429, "locked", (waitMs / 1000).toInt() + 1)
