@@ -113,6 +113,13 @@ Cloudflare Tunnel pointing at `http://localhost:8092`) - the app only accepts
 `https://` addresses. The `VAULT_SETUP_TOKEN` is what you paste into the app's
 first-time setup; it only works once.
 
+Wrong passkeys are counted per visitor: five in a row pause logins from that
+address, with the pause doubling up to 15 minutes, and 100 from anywhere pause
+logins for everyone. Behind a Cloudflare Tunnel every visitor arrives from the
+tunnel, so add `VAULT_CLIENT_IP_HEADER=CF-Connecting-IP` to `.env` to count
+each real address. Only set it when the proxy is the one thing that can reach
+the port, since the header is trusted as given.
+
 Without Docker:
 
 ```bash

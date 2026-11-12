@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,13 +15,14 @@ import (
 const maxJSONBytes = 1 << 20
 
 type API struct {
-	store      *Store
-	auth       *Auth
-	setupToken string
+	store          *Store
+	auth           *Auth
+	setupToken     string
+	clientIPHeader string
 }
 
-func NewAPI(store *Store, auth *Auth, setupToken string) http.Handler {
-	api := &API{store: store, auth: auth, setupToken: setupToken}
+func NewAPI(store *Store, auth *Auth, setupToken string, clientIPHeader string) http.Handler {
+	api := &API{store: store, auth: auth, setupToken: setupToken, clientIPHeader: clientIPHeader}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/kdf", api.kdf)
 	mux.HandleFunc("POST /v1/account", api.createAccount)
@@ -154,6 +156,19 @@ type loginResponse struct {
 	WrappedVaultKey []byte `json:"wrappedVaultKey"`
 }
 
+func (a *API) clientSource(r *http.Request) string {
+	if a.clientIPHeader != "" {
+		if forwarded := net.ParseIP(strings.TrimSpace(r.Header.Get(a.clientIPHeader))); forwarded != nil {
+			return forwarded.String()
+		}
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
 func (a *API) login(w http.ResponseWriter, r *http.Request) {
 	var request loginRequest
 	if !decodeJSON(w, r, &request) {
@@ -164,9 +179,10 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 		a.storeError(w, err)
 		return
 	}
-	token, err := a.auth.Login(account, request.AuthKey)
+	source := a.clientSource(r)
+	token, err := a.auth.Login(account, request.AuthKey, source)
 	if errors.Is(err, ErrLocked) {
-		retry := int(a.auth.RetryAfter()/time.Second) + 1
+		retry := int(a.auth.RetryAfter(source)/time.Second) + 1
 		w.Header().Set("Retry-After", strconv.Itoa(retry))
 		writeError(w, http.StatusTooManyRequests, "too many failed attempts")
 		return

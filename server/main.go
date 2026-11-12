@@ -11,6 +11,7 @@ func main() {
 	address := envOr("VAULT_ADDR", "127.0.0.1:8080")
 	dataDir := envOr("VAULT_DATA", "./data")
 	setupToken := os.Getenv("VAULT_SETUP_TOKEN")
+	clientIPHeader := os.Getenv("VAULT_CLIENT_IP_HEADER")
 
 	store, err := NewStore(dataDir)
 	if err != nil {
@@ -22,7 +23,7 @@ func main() {
 	}
 	server := &http.Server{
 		Addr:              address,
-		Handler:           NewAPI(store, auth, setupToken),
+		Handler:           NewAPI(store, auth, setupToken, clientIPHeader),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       2 * time.Minute,
 	}
