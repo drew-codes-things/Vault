@@ -10,9 +10,11 @@ import java.net.URI
 import java.net.URL
 import java.net.URLConnection
 import javax.net.ssl.HttpsURLConnection
+import kotlin.concurrent.thread
 
 const val UPDATE_CHECK_INTERVAL_MS = 24L * 60 * 60 * 1000
 const val UPDATE_TIMEOUT_MS = 5_000
+const val UPDATE_DEADLINE_MS = 5_000L
 const val MAX_RELEASE_NESTING = 32
 const val MAX_RELEASE_ANSWER_BYTES = 256 * 1024
 private const val READ_CHUNK_BYTES = 8 * 1024
@@ -85,10 +87,16 @@ fun releasedVersion(answer: String): String {
     return tag?.let { VERSION_NUMBER.find(it)?.value } ?: throw UpdateCheckException("the latest release has no version in its tag")
 }
 
-fun readCapped(stream: InputStream, maxBytes: Int = MAX_RELEASE_ANSWER_BYTES): ByteArray {
+fun readCapped(
+    stream: InputStream,
+    maxBytes: Int = MAX_RELEASE_ANSWER_BYTES,
+    deadlineAt: Long = Long.MAX_VALUE,
+    now: () -> Long = System::currentTimeMillis,
+): ByteArray {
     val output = ByteArrayOutputStream()
     val chunk = ByteArray(READ_CHUNK_BYTES)
     while (true) {
+        if (now() >= deadlineAt) throw UpdateCheckException("the release answer did not arrive in time")
         val count = stream.read(chunk)
         if (count < 0) return output.toByteArray()
         if (output.size() + count > maxBytes) throw UpdateCheckException("the release answer is larger than $maxBytes bytes")
@@ -99,6 +107,8 @@ fun readCapped(stream: InputStream, maxBytes: Int = MAX_RELEASE_ANSWER_BYTES): B
 class LatestReleaseSource(
     private val apiUrl: String,
     private val userAgent: String,
+    private val deadlineMs: Long = UPDATE_DEADLINE_MS,
+    private val now: () -> Long = System::currentTimeMillis,
     private val open: (URL) -> URLConnection = { it.openConnection() },
 ) {
     init {
@@ -106,6 +116,7 @@ class LatestReleaseSource(
     }
 
     fun latestVersion(): String {
+        val deadlineAt = now() + deadlineMs
         val connection = open(URI(apiUrl).toURL()) as? HttpsURLConnection ?: throw UpdateCheckException("the update check only uses https")
         connection.connectTimeout = UPDATE_TIMEOUT_MS
         connection.readTimeout = UPDATE_TIMEOUT_MS
@@ -113,13 +124,27 @@ class LatestReleaseSource(
         connection.instanceFollowRedirects = false
         connection.setRequestProperty("User-Agent", userAgent)
         connection.setRequestProperty("Accept", "application/vnd.github+json")
+        val watchdog = disconnectAtDeadline(connection)
         try {
             val status = connection.responseCode
             if (status != HttpURLConnection.HTTP_OK) throw UpdateCheckException("GitHub answered $status")
-            val answer = connection.inputStream.use { readCapped(it) }
+            val answer = connection.inputStream.use { readCapped(it, deadlineAt = deadlineAt, now = now) }
             return releasedVersion(answer.toString(Charsets.UTF_8))
+        } catch (error: IOException) {
+            if (now() >= deadlineAt) throw UpdateCheckException("the update check ran past its ${deadlineMs / 1000} second limit")
+            throw error
         } finally {
+            watchdog.interrupt()
             connection.disconnect()
+        }
+    }
+
+    private fun disconnectAtDeadline(connection: HttpsURLConnection): Thread = thread(isDaemon = true, name = "update-check-deadline") {
+        try {
+            Thread.sleep(deadlineMs)
+            connection.disconnect()
+        } catch (interrupted: InterruptedException) {
+            return@thread
         }
     }
 }
