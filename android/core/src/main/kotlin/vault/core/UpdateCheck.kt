@@ -13,9 +13,13 @@ import javax.net.ssl.HttpsURLConnection
 
 const val UPDATE_CHECK_INTERVAL_MS = 24L * 60 * 60 * 1000
 const val UPDATE_TIMEOUT_MS = 5_000
+const val MAX_RELEASE_NESTING = 32
 const val MAX_RELEASE_ANSWER_BYTES = 256 * 1024
 private const val READ_CHUNK_BYTES = 8 * 1024
 private const val SECURE_SCHEME = "https"
+private const val LENIENT_ONLY_CHARACTERS = "'/#"
+private const val JSON_WHITESPACE = " \t\n\r"
+private const val STRING_STARTERS = "{[,:"
 private val VERSION_NUMBER = Regex("""\d+(?:\.\d+)*""")
 
 class UpdateCheckException(message: String) : IOException(message)
@@ -35,7 +39,44 @@ fun isNewerVersion(latest: String, current: String): Boolean {
     return false
 }
 
+fun isPlainJsonWithinNesting(text: String, limit: Int = MAX_RELEASE_NESTING): Boolean {
+    var depth = 0
+    var inString = false
+    var escaped = false
+    var stringMayStart = true
+    for (character in text) {
+        if (escaped) {
+            escaped = false
+        } else if (inString) {
+            when (character) {
+                '\\' -> escaped = true
+                '"' -> {
+                    inString = false
+                    stringMayStart = false
+                }
+            }
+        } else if (character == '"') {
+            if (!stringMayStart) return false
+            inString = true
+        } else if (character in LENIENT_ONLY_CHARACTERS) {
+            return false
+        } else if (character == '[' || character == '{') {
+            if (++depth > limit) return false
+            stringMayStart = true
+        } else if (character == ']' || character == '}') {
+            if (--depth < 0) return false
+            stringMayStart = false
+        } else if (character in STRING_STARTERS) {
+            stringMayStart = true
+        } else if (character !in JSON_WHITESPACE) {
+            stringMayStart = false
+        }
+    }
+    return true
+}
+
 fun releasedVersion(answer: String): String {
+    if (!isPlainJsonWithinNesting(answer)) throw UpdateCheckException("the release answer is not plain JSON nested at most $MAX_RELEASE_NESTING deep")
     val tag = try {
         JSONObject(answer).opt("tag_name") as? String
     } catch (error: JSONException) {
@@ -113,6 +154,10 @@ class UpdateNotice(
                 latestVersion = fetchLatestVersion()
             } catch (error: IOException) {
                 log("Update check failed: ${error.message}")
+            } catch (error: Exception) {
+                log("Update check failed: ${error.javaClass.simpleName}")
+            } catch (error: StackOverflowError) {
+                log("Update check failed: ${error.javaClass.simpleName}")
             }
         }
         return availableVersion()
