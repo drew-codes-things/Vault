@@ -63,6 +63,7 @@ gone for good - that's the point.
 - **Fingerprint unlock** - optional, on top of the passkey
 - **Hidden in recent apps** - the app switcher shows a blank screen, not your files
 - **Delete** - remove files permanently from the vault
+- **Update notice** - shortly after opening, and then at most once a day, Vault asks GitHub for its latest release and shows "Version X is available" when it is newer. Open takes you to the release page; nothing is downloaded or installed. Dismiss hides that version only, and the menu (three dots) turns the check off. This is the only request Vault makes besides your own server
 
 ---
 

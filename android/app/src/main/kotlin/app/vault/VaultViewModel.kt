@@ -30,6 +30,8 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import vault.core.ApiException
 import vault.core.ChunkReader
+import vault.core.LatestReleaseSource
+import vault.core.UpdateNotice
 import vault.core.DecryptionException
 import vault.core.MediaKind
 import vault.core.PlainSource
@@ -168,6 +170,35 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleReplayVideos() {
         replayVideos = !replayVideos
         viewerPreferences.edit().putBoolean("replay_videos", replayVideos).apply()
+    }
+
+    private val updateNotice = UpdateNotice(
+        currentVersion = BuildConfig.VERSION_NAME,
+        store = UpdatePreferences(application.getSharedPreferences(UPDATE_PREFERENCES, Context.MODE_PRIVATE)),
+        fetchLatestVersion = LatestReleaseSource(LATEST_RELEASE_API, "Vault/${BuildConfig.VERSION_NAME}")::latestVersion,
+        log = { Log.i("Vault", it) },
+    )
+    var availableUpdate by mutableStateOf<String?>(null)
+        private set
+    var updateChecksEnabled by mutableStateOf(updateNotice.checksEnabled)
+        private set
+
+    fun checkForUpdate() {
+        viewModelScope.launch {
+            availableUpdate = withContext(Dispatchers.IO) { updateNotice.checkIfDue() }
+        }
+    }
+
+    fun dismissUpdate() {
+        updateNotice.dismiss()
+        availableUpdate = null
+    }
+
+    fun toggleUpdateChecks() {
+        updateChecksEnabled = !updateChecksEnabled
+        updateNotice.turnChecks(updateChecksEnabled)
+        availableUpdate = updateNotice.availableVersion()
+        if (updateChecksEnabled) checkForUpdate()
     }
 
     private var session: VaultSession? = null
@@ -428,6 +459,7 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun appStarted() {
+        checkForUpdate()
         choosingExternally = false
         lockJob?.cancel()
         lockJob = null

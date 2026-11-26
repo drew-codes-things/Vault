@@ -94,6 +94,7 @@ fun FoldersScreen(viewModel: VaultViewModel, authenticate: BiometricAuth) {
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             SyncStatus(viewModel)
+            UpdateBanner(viewModel)
             TransientMessage(viewModel)
             if (cards.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No folders yet. Tap + to make one.") }
@@ -264,6 +265,7 @@ fun FolderScreen(viewModel: VaultViewModel, folder: String, authenticate: Biomet
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             SyncStatus(viewModel)
+            UpdateBanner(viewModel)
             viewModel.adds.forEach { add ->
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                     val status = when {
@@ -331,10 +333,10 @@ private fun RowScope.VaultActions(viewModel: VaultViewModel, authenticate: Biome
     var settingsOpen by remember { mutableStateOf(false) }
     IconButton(onClick = { viewModel.syncNow() }) { Icon(Icons.Default.Refresh, "Sync") }
     IconButton(onClick = { viewModel.lock() }) { Icon(Icons.Default.Lock, "Lock") }
-    if (viewModel.biometricAvailable()) {
-        Box {
-            IconButton(onClick = { settingsOpen = true }) { Icon(Icons.Default.MoreVert, "Settings") }
-            DropdownMenu(expanded = settingsOpen, onDismissRequest = { settingsOpen = false }) {
+    Box {
+        IconButton(onClick = { settingsOpen = true }) { Icon(Icons.Default.MoreVert, "Settings") }
+        DropdownMenu(expanded = settingsOpen, onDismissRequest = { settingsOpen = false }) {
+            if (viewModel.biometricAvailable()) {
                 DropdownMenuItem(
                     text = { Text(if (viewModel.biometricEnabled) "Turn off fingerprint unlock" else "Turn on fingerprint unlock") },
                     onClick = {
@@ -343,6 +345,13 @@ private fun RowScope.VaultActions(viewModel: VaultViewModel, authenticate: Biome
                     },
                 )
             }
+            DropdownMenuItem(
+                text = { Text(if (viewModel.updateChecksEnabled) "Turn off update check" else "Turn on update check") },
+                onClick = {
+                    settingsOpen = false
+                    viewModel.toggleUpdateChecks()
+                },
+            )
         }
     }
 }
