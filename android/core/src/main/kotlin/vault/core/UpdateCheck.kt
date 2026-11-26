@@ -136,41 +136,52 @@ class UpdateNotice(
     private val log: (String) -> Unit,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
+    private val lock = Any()
     private var lastCheckAt: Long? = null
     private var latestVersion: String? = null
 
     val checksEnabled: Boolean get() = store.checksEnabled
 
-    @Synchronized
-    fun availableVersion(): String? = latestVersion?.takeIf {
-        store.checksEnabled && it != store.dismissedVersion && isNewerVersion(it, currentVersion)
+    fun availableVersion(): String? = synchronized(lock) {
+        latestVersion?.takeIf {
+            store.checksEnabled && it != store.dismissedVersion && isNewerVersion(it, currentVersion)
+        }
     }
 
-    @Synchronized
     fun checkIfDue(): String? {
-        if (isCheckDue()) {
-            lastCheckAt = now()
-            try {
-                latestVersion = fetchLatestVersion()
-            } catch (error: IOException) {
-                log("Update check failed: ${error.message}")
-            } catch (error: Exception) {
-                log("Update check failed: ${error.javaClass.simpleName}")
-            } catch (error: StackOverflowError) {
-                log("Update check failed: ${error.javaClass.simpleName}")
-            }
-        }
+        if (claimCheck()) fetchAndRemember()
         return availableVersion()
     }
 
-    @Synchronized
     fun dismiss() {
-        latestVersion?.let { store.dismissedVersion = it }
+        synchronized(lock) {
+            latestVersion?.let { store.dismissedVersion = it }
+        }
     }
 
-    @Synchronized
     fun turnChecks(on: Boolean) {
-        store.checksEnabled = on
+        synchronized(lock) {
+            store.checksEnabled = on
+        }
+    }
+
+    private fun claimCheck(): Boolean = synchronized(lock) {
+        if (!isCheckDue()) return false
+        lastCheckAt = now()
+        true
+    }
+
+    private fun fetchAndRemember() {
+        val fetched = try {
+            fetchLatestVersion()
+        } catch (error: IOException) {
+            return log("Update check failed: ${error.message}")
+        } catch (error: Exception) {
+            return log("Update check failed: ${error.javaClass.simpleName}")
+        } catch (error: StackOverflowError) {
+            return log("Update check failed: ${error.javaClass.simpleName}")
+        }
+        synchronized(lock) { latestVersion = fetched }
     }
 
     private fun isCheckDue(): Boolean {

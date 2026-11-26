@@ -185,7 +185,8 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
 
     fun checkForUpdate() {
         viewModelScope.launch {
-            availableUpdate = withContext(Dispatchers.IO) { updateNotice.checkIfDue() }
+            withContext(Dispatchers.IO) { updateNotice.checkIfDue() }
+            availableUpdate = updateNotice.availableVersion()
         }
     }
 
